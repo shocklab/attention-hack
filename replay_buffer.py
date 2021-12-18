@@ -12,7 +12,7 @@ class ReplayBuffer:
         self.act_buffer = np.zeros(shape=act_buffer_shape, dtype=int)
 
         rew_buffer_shape = (buffer_size, 1)
-        self.rew_buffer np.zeros(shape=rew_buffer_shape, dtype=float)
+        self.rew_buffer = np.zeros(shape=rew_buffer_shape, dtype=float)
 
         logits_buffer_shape = (buffer_size, num_actions)
         self.logits_buffer = np.zeros(shape=logits_buffer_shape, dtype=float)
@@ -32,7 +32,7 @@ class ReplayBuffer:
         self.act_buffer[idx] = act
         self.logits_buffer[idx] = logits
         self.rew_buffer[idx] = rew
-        self.next_obs[idx] = next_obs
+        self.next_obs_buffer[idx] = next_obs
         self.done_buffer[idx] = done
 
         self.ctr += 1
@@ -41,11 +41,11 @@ class ReplayBuffer:
         max_idx = min(self.ctr, self.buffer_size)
         idxs = np.random.choice(max_idx, self.batch_size, replace=True)
 
-        obs_batch = tf.convert.to_tensor(self.obs_buffer[idxs])
-        act_batch = tf.convert_to_tensor(self.act_buffer[idxs])
-        logits_batch = tf.convert_to_tensor(self.logits_buffer[idxs])
-        rew_batch = tf.convert_to_tensor(self.rew_buffer[idxs])
-        next_obs_batch = tf.convert_to_tensor(self.next_obs_buffer[idxs])
-        done_batch = tf.convert_to_tensor(self.done_buffer[idxs])
+        obs_batch = self.obs_buffer[idxs]
+        act_batch = self.act_buffer[idxs]
+        logits_batch = self.logits_buffer[idxs]
+        rew_batch = self.rew_buffer[idxs]
+        next_obs_batch = self.next_obs_buffer[idxs]
+        done_batch = self.done_buffer[idxs]
 
         return obs_batch, act_batch, logits_batch, rew_batch, next_obs_batch, done_batch

@@ -1,42 +1,53 @@
+import os
 from pettingzoo.atari import volleyball_pong_v2
-import supersuit
-from replay_buffer import ReplayBuffer
+import numpy as np
+
+from agents import Agent
+from environment_wrapper import EnvironmentWrapper
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+#CUDA_VISIBLE_DEVICES=""
 
 # Create 2 player env
 env = volleyball_pong_v2.parallel_env(obs_type='grayscale_image', num_players=2)
 
-def preprocess(env):
-    # Preprocessing
-    # as per openai baseline's MaxAndSKip wrapper, maxes over the last 2 frames
-    # to deal with frame flickering
-    env = supersuit.max_observation_v0(env, 2)
+env = EnvironmentWrapper(env)
 
-    # repeat_action_probability is set to 0.25 to introduce non-determinism to the system
-    env = supersuit.sticky_actions_v0(env, repeat_action_probability=0.25)
+NUM_ACTIONS = 18 # TODO
+MAX_EPISODE_LENGTH = 500
+OBS_DIM = (84, 84, 5) # TODO
 
-    # skip frames for faster processing and less control
-    # to be compatible with gym, use frame_skip(env, (2,5))
-    env = supersuit.frame_skip_v0(env, 4)
+first_0 = Agent(obs_dim=OBS_DIM, num_actions=NUM_ACTIONS)
+second_0 = Agent(obs_dim=OBS_DIM, num_actions=NUM_ACTIONS)
 
-    # downscale observation for faster processing
-    env = supersuit.resize_v0(env, 84, 84)
-
-    # allow agent to see everything on the screen despite Atari's flickering screen problem
-    env = supersuit.frame_stack_v1(env, 4)
-
-    return env
-
-env = preprocess(env)
-
-def policy(obs, agent):
-    return 0
-
-replay_buffer_1 = ReplayBuffer(obs_dime=(84,84,4), num_ac)
+agents = {"first_0": first_0, "second_0": second_0}
 
 observations = env.reset()
+for _ in range(MAX_EPISODE_LENGTH):
+    actions = {}
+    logits_dict = {}
+    attention_layers = {}
+    for agent in env.env.agents:
+        action, logits, attention = agents[agent].select_action(observations[agent])
 
-for step in range(100):
-    actions = {agent: policy(observations[agent], agent) for agent in env.agents}
-    observations, rewards, dones, infos = env.step(actions)
+        actions[agent] = action
+        logits_dict[agent] = logits
+        attention_layers[agent] = attention
 
-    print(list(observations.values())[0].shape)
+    # Step the environment
+    next_observations, rewards, dones, infos = env.step(actions, attention_layers)
+
+    # Add transitions to replay buffers
+    for agent in env.env.agents:
+        agents[agent].observe(
+            observations[agent], 
+            actions[agent], 
+            logits_dict[agent], 
+            rewards[agent],
+            next_observations[agent],
+            dones[agent]
+        )
+
+batch = agents["second_0"].buffer.sample()
+
+print(batch[0].shape)
