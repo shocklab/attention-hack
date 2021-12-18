@@ -1,5 +1,6 @@
 from pettingzoo.atari import volleyball_pong_v2
 import supersuit
+from replay_buffer import ReplayBuffer
 
 # Create 2 player env
 env = volleyball_pong_v2.parallel_env(obs_type='grayscale_image', num_players=2)
@@ -25,11 +26,12 @@ def preprocess(env):
 
     return env
 
+env = preprocess(env)
 
 def policy(obs, agent):
     return 0
 
-replay_buffer_1 = 
+replay_buffer_1 = ReplayBuffer(obs_dime=(84,84,4), num_ac)
 
 observations = env.reset()
 
