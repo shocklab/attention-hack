@@ -1,29 +1,36 @@
 import tensorflow as tf
-from tensorflow import keras
-import tensorflow_probability as tfp
+import sonnet as snt
 
-class Model:
+class QNetwork(snt.Module):
 
-  def __init__(self, output_size):
+  def __init__(self, obs_shape, num_actions):
 
-    self.network = keras.Sequential([
-        keras.layers.Conv2D(32, kernel_size=[8, 8], strides=[4, 4]),
-        keras.layers.ReLU(),
-        keras.layers.Conv2D(64, kernel_size=[4, 4], strides=[2, 2]),
-        keras.layers.ReLU(),
-        keras.layers.Conv2D(64, kernel_size=[3, 3], strides=[1, 1]),
-        keras.layers.ReLU(),
-        keras.layers.Flatten(),
-        keras.layers.Dense(128),
-        keras.layers.Dense(output_size)
+    if len(obs_shape) > 1:
+      self.conv_net = snt.Sequential([
+          snt.Conv2D(32, 8, 4),
+          tf.nn.relu,
+          snt.Conv2D(64, 4, 2),
+          tf.nn.relu,
+          snt.Conv2D(64, 3, 1),
+          tf.nn.relu,
+          tf.keras.layers.Flatten()
+      ])
+    else:
+      self.conv_net = snt.Sequential([
+        tf.identity
+      ])
+
+    self.mlp = snt.Sequential([
+        snt.Linear(256),
+        tf.nn.relu,
+        snt.Linear(256),
+        tf.nn.relu,
+        snt.Linear(num_actions)
     ])
 
-  def forward(self, observations):
-    logits = self.network(observations)
+    super(QNetwork, self).__init__()
 
-    distribution = tfp.distributions.Categorical(logits=logits) 
-    action = distribution.sample()
-
-    attention = tf.zeros((84,84,1), dtype="float32") # TODO compute attention here.
-
-    return action, logits, attention
+  def __call__(self, obs):
+    embed = self.conv_net(obs)
+    q_vals = self.mlp(embed)
+    return q_vals

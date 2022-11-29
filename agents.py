@@ -1,54 +1,101 @@
 import random
+import copy
 import numpy as np
 import tensorflow as tf
+import tree
+import trfl
+import sonnet as snt
 
-from replay_buffer import ReplayBuffer
-from model import Model
+from replay_buffer import NumpyReplayBuffer, ReverbReplayBuffer
+from model import QNetwork
 
 class Agent:
 
-    def __init__(self, obs_dim, num_actions, buffer_size=100_000, batch_size=32):
+    def __init__(self, obs_shape, num_actions, buffer_size=100_000, batch_size=32, eps_min=0.05,
+        eps_dec_steps=1e4, train_period=4, lr=3e-4, gamma=0.99, target_update_rate=0.01, **kwargs):
 
-        self.buffer = ReplayBuffer(obs_dim, num_actions, buffer_size=buffer_size, batch_size=batch_size)
-        self.actor_model = Model(output_size=num_actions)
-        self.critic_model = Model(output_size=1)
+        # self.buffer = NumpyReplayBuffer(obs_shape, buffer_size=buffer_size, batch_size=batch_size)
+        self.buffer = ReverbReplayBuffer(obs_shape, buffer_size=buffer_size, batch_size=batch_size)
+        self.Q_net = QNetwork(obs_shape=obs_shape, num_actions=num_actions)
+        self.target_Q_net = copy.deepcopy(self.Q_net)
+        self.optim = snt.optimizers.Adam(lr)
 
         self.num_actions = num_actions
-        self.attention_dim = (*obs_dim[:-1], 1)
+        self.gamma = gamma
+        self.target_update_rate = target_update_rate
 
-    def _random_action(self):
-        action = random.randint(0, self.num_actions-1)
-        logits = np.zeros(self.num_actions, dtype=float)
-        attention = np.zeros(self.attention_dim, dtype=float)
+        self.train_period = train_period
+        self.train_call_ctr = 0
+        self.train_ctr = 0
 
-        return action, logits, attention
+        # Epsilon for exploration
+        self.eps = 1.0
+        self.eps_min = eps_min
+        self.eps_dec_steps = eps_dec_steps
+        self.eps_dec = eps_min ** (1/eps_dec_steps) # exponential decay
 
-    def observe(self, observation, action, logits, reward, next_observation, done):
-        self.buffer.store_transition(observation, action, logits, reward, next_observation, done)
+    # TODO: make this function faster. Add tf.function.
+    def select_action(self, obs, eval=False):
+        if not eval:
+            # Decrement epsilon
+            self.eps = max(self.eps * self.eps_dec, self.eps_min) # exponential decay
+            eps = self.eps
+        else:
+            eps=0.0
 
-    def select_action(self, observation):
+        if random.random() < eps:
+            act = random.randint(0, self.num_actions-1)
+        else:
+            obs = tf.expand_dims(tf.convert_to_tensor(obs, "float32"), axis=0)
+            act = int(tf.argmax(self.Q_net(obs), axis=-1).numpy()[0])
 
-        # action, logits, attention = self._random_action() # TODO insert model (network) here! 
+        return act
 
-        # Convert numpy array into tensor and add dummy batch dim
-        observation = tf.convert_to_tensor(observation)
-        observation = tf.expand_dims(observation, axis=0)
 
-        action, logits, attention = self.actor_model.forward(observation)
+    def store(self, obs, act, rew, next_obs, done):
+        self.buffer.store_transition(obs, act, rew, next_obs, done)
 
-        action = action.numpy()[0]
-        logits = logits.numpy()
-        attention = attention.numpy()
+    def train(self):
+        if not self.buffer.is_ready():
+            return {}
 
-        return action, logits, attention
+        self.train_call_ctr += 1
 
-    def learn(self):
-        obs_batch, act_batch, logits_batch, rew_batch, next_obs_batch, done_batch = self.buffer.sample()
+        if self.train_call_ctr % self.train_period == 0:
+            self.train_ctr += 1
+            batch = self.buffer.sample()
+            logs = self._train(batch)
+            logs = tree.map_structure(np.array, logs)
+            logs["Train Steps"] = self.train_ctr
+            return logs
+        else:
+            return {}
+
+    @tf.function
+    def _train(self, batch):
+        obs, act, rew, next_obs, done = batch
+
+        # Double Q-learning target
+        target_q_values = self.target_Q_net(next_obs)
+        target_q_select = self.Q_net(next_obs)
+        next_actions = tf.argmax(target_q_select, axis=-1)
+        target_qs = trfl.batched_index(target_q_values, next_actions)
+
+        targets = rew + self.gamma * (1.0 - done) * target_qs
 
         with tf.GradientTape() as tape:
-            
+            qs = self.Q_net(obs)
+            qs = trfl.batched_index(qs, act)
+            loss = 0.5 * (targets - qs) ** 2
+            loss = tf.reduce_mean(loss)
 
-    def policy_loss(log_prob_prev, log_prob, advantage, epsilon):
-        ratio = tf.exp(log_prob - log_prob_prev)
-        clip = tf.clip_by_value(ratio, 1-epsilon, 1+epsilon)
-        return tf.minimum(ratio*advantage, clip)
+        vars = self.Q_net.trainable_variables
+        grads = tape.gradient(loss, vars)
+        self.optim.apply(grads, vars)
+
+        # Soft target update
+        tau = self.target_update_rate
+        for src, dest in zip(self.Q_net.variables, self.target_Q_net.variables):
+            dest.assign(dest * (1.0 - tau) + src * tau)
+
+        return {"Loss": loss, "Mean Q-value": tf.reduce_mean(qs)}
