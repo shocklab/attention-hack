@@ -25,7 +25,6 @@ class NumpyReplayBuffer:
         
 
     def store_transition(self, obs, act, rew, next_obs, done):
-
         idx = self.ctr % self.buffer_size
 
         self.obs_buffer[idx] = obs
@@ -57,11 +56,11 @@ class NumpyReplayBuffer:
 
 class ReverbReplayBuffer:
 
-    def __init__(self, obs_shape, buffer_size=100_000, batch_size=32, samples_per_insert=None):
+    def __init__(self, obs_shape, buffer_size=100_000, batch_size=32, samples_per_insert=None, priority_exponent=0.6):
         self._server = reverb.Server(tables=[
             reverb.Table(
                 name='my_table',
-                sampler=reverb.selectors.Uniform(),
+                sampler=reverb.selectors.Prioritized(priority_exponent),
                 remover=reverb.selectors.Fifo(),
                 max_size=int(buffer_size),
                 rate_limiter=reverb.rate_limiters.MinSize(1) if samples_per_insert is None else \
@@ -127,7 +126,7 @@ class ReverbReplayBuffer:
 
     def sample(self):
         batch = next(self._dataset)
-        batch = (batch.data["obs"], batch.data["act"], batch.data["rew"], batch.data["next_obs"], batch.data["done"])
+        # batch = (batch.data["obs"], batch.data["act"], batch.data["rew"], batch.data["next_obs"], batch.data["done"])
         return batch
 
     def is_ready(self):

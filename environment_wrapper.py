@@ -4,14 +4,59 @@ import cv2
 import gym
 from gym import spaces
 
+class DoubleIndependentGym:
+
+    def __init__(self, env_name="CartPole-v1"):
+
+        self.env_0 = gym.make(env_name)
+        self.env_1 = gym.make(env_name)
+
+        self.agents = ["agent_0", "agent_1"]
+        self.num_actions = 2
+        self.obs_shape = self.env_0.observation_space.shape
+
+    def reset(self):
+        obs_0 = self.env_0.reset()
+        obs_1 = self.env_1.reset()
+
+        obs = {"agent_0": obs_0, "agent_1": obs_1}
+
+        return obs
+
+    def step(self, actions):
+        next_obs = {}
+        rew = {}
+        done = {}
+
+        next_obs["agent_0"], rew["agent_0"], done["agent_0"], info = self.env_0.step(actions["agent_0"])
+        next_obs["agent_1"], rew["agent_1"], done["agent_1"], info = self.env_1.step(actions["agent_1"])
+
+        if done["agent_0"] or done["agent_1"]:
+            done["agent_0"] = True
+            done["agent_1"] = True
+
+        return next_obs, rew, done
+
 class Environment:
 
-    def __init__(self):
-        self.env = gym.make("SlimeVolleyNoFrameskip-v0")
-        self.env = FrameStack(GreyScale(Reshape(self.env)), n_frames=4)
+    def __init__(self, pixel_obs=False):
+
+        if pixel_obs:
+            self.env = gym.make("SlimeVolleyNoFrameskip-v0")
+            self.env = FrameStack(GreyScale(Reshape(FrameSkipStickyAction(self.env, n_frames=2))), n_frames=4)
+        else:
+            self.env = gym.make("SlimeVolley-v0")
+
         self.agents = ["agent_0", "agent_1"]
         self.num_actions = 6
         self.obs_shape = self.env.observation_space.shape
+
+        self.action_table = [[0, 0, 0], # NOOP
+                  [1, 0, 0], # LEFT (forward)
+                  [1, 0, 1], # UPLEFT (forward jump)
+                  [0, 0, 1], # UP (jump)
+                  [0, 1, 1], # UPRIGHT (backward jump)
+                  [0, 1, 0]] # RIGHT (backward)
 
     def reset(self):
         raw_obs = self.env.reset()
@@ -26,14 +71,37 @@ class Environment:
         done = {}
 
         next_obs["agent_0"], rew["agent_0"], done["agent_0"], info = self.env.step(
-            actions["agent_0"], 
-            actions["agent_1"]
+            self.action_table[actions["agent_0"]], 
+            self.action_table[actions["agent_1"]]
         )
         next_obs["agent_1"] = info['otherObs']
         rew["agent_1"] = - rew["agent_0"]
         done["agent_1"] = done["agent_0"]
 
         return next_obs, rew, done
+
+class FrameSkipStickyAction(gym.Wrapper):
+
+    def __init__(self, env, n_frames):
+        """Skip n_frams by repeating same action."""
+        gym.Wrapper.__init__(self, env)
+        self.observation_space = env.observation_space
+        self.n_frames = n_frames
+
+    def reset(self):
+        return self.env.reset()
+
+    def step(self, action_1, action_2):
+        tot_rew = 0
+        for _ in range(self.n_frames):
+            next_obs, rew, done, info = self.env.step(action_1, action_2)
+
+            tot_rew += rew
+
+            if done:
+                break
+        
+        return next_obs, tot_rew, done, info
 
 class FrameStack(gym.Wrapper):
     def __init__(self, env, n_frames):

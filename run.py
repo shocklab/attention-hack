@@ -6,7 +6,7 @@ import wandb
 import tensorflow as tf
 
 from agents import Agent
-from environment_wrapper import Environment
+from environment_wrapper import Environment, DoubleIndependentGym
 
 physical_devices = tf.config.list_physical_devices('GPU') 
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -14,13 +14,13 @@ tf.config.experimental.set_memory_growth(physical_devices[0], True)
 config = {
     "max_episodes": 1_000_000,
     "train_period": 4,
-    "batch_size": 128,
-    "eps_min": 0.05,
+    "batch_size": 256,
+    "eps_min": 0.1,
     "eps_dec_steps": 1e6,
-    "buffer_size": int(1e4),
+    "buffer_size": int(5e3),
     "lr": 3e-4,
-    "eval_period": 25,
-    "eval_episodes": 2
+    "eval_period": 100,
+    "eval_episodes": 4
 }
 
 wandb.init(
@@ -29,7 +29,7 @@ wandb.init(
 )
 
 # Create env
-env = Environment()
+env = Environment(pixel_obs=True)
 
 num_actions = env.num_actions
 obs_shape = env.obs_shape
@@ -70,14 +70,22 @@ for ep in range(config["max_episodes"]):
                 done[agent_id]
             )
 
-        for agent in agents.values():
-            wandb.log(agent.train(), commit=False)
+        for agent_id, agent in agents.items():
+            logs = agent.train()
+            
+            agent_logs = {}
+            for log_key in logs.keys():
+                agent_logs[agent_id + " " + log_key] = logs[log_key]
+            del logs
+
+            wandb.log(agent_logs, commit=False)
 
         obs = next_obs
         ep_done = all(done.values())
 
         for agent_id in agents.keys():
             episode_return[agent_id] += rew[agent_id]
+
         episode_len += 1
         timesteps += 1
 
