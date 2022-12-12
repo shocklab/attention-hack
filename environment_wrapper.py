@@ -39,7 +39,7 @@ class DoubleIndependentGym:
 
 class Environment:
 
-    def __init__(self, pixel_obs=False):
+    def __init__(self, pixel_obs=False, survival_bonus=False, single_agent=False):
 
         if pixel_obs:
             self.env = gym.make("SlimeVolleyNoFrameskip-v0")
@@ -47,7 +47,14 @@ class Environment:
         else:
             self.env = gym.make("SlimeVolley-v0")
 
-        self.agents = ["agent_0", "agent_1"]
+        self.single_agent = single_agent
+        self.env.survival_bonus = survival_bonus
+
+        if self.single_agent:
+            self.agents = ["agent_0"]
+        else:
+            self.agents = ["agent_0", "agent_1"]
+
         self.num_actions = 6
         self.obs_shape = self.env.observation_space.shape
 
@@ -61,7 +68,10 @@ class Environment:
     def reset(self):
         raw_obs = self.env.reset()
 
-        obs = {"agent_0": raw_obs, "agent_1": raw_obs}
+        if self.single_agent:
+            obs = {"agent_0": raw_obs}
+        else:
+            obs = {"agent_0": raw_obs, "agent_1": raw_obs}
 
         return obs
 
@@ -72,11 +82,13 @@ class Environment:
 
         next_obs["agent_0"], rew["agent_0"], done["agent_0"], info = self.env.step(
             self.action_table[actions["agent_0"]], 
-            self.action_table[actions["agent_1"]]
+            self.action_table[actions["agent_1"]] if not self.single_agent else None
         )
-        next_obs["agent_1"] = info['otherObs']
-        rew["agent_1"] = - rew["agent_0"]
-        done["agent_1"] = done["agent_0"]
+
+        if not self.single_agent:
+            next_obs["agent_1"] = info['otherObs']
+            rew["agent_1"] = - rew["agent_0"]
+            done["agent_1"] = done["agent_0"]
 
         return next_obs, rew, done
 

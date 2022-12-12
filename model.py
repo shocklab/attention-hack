@@ -7,11 +7,11 @@ class QNetwork(snt.Module):
 
     if len(obs_shape) > 1:
       self.conv_net = snt.Sequential([
-          snt.Conv2D(32, 8, 4),
+          snt.Conv2D(8, 8, 4),
           tf.nn.relu,
-          snt.Conv2D(64, 4, 2),
+          snt.Conv2D(16, 4, 2),
           tf.nn.relu,
-          snt.Conv2D(64, 3, 1),
+          snt.Conv2D(16, 3, 1),
           tf.nn.relu,
           tf.keras.layers.Flatten()
       ])
@@ -23,7 +23,7 @@ class QNetwork(snt.Module):
     self.mlp = snt.Sequential([
         snt.Linear(256),
         tf.nn.relu,
-        snt.Linear(256),
+        snt.Linear(128),
         tf.nn.relu,
         snt.Linear(num_actions)
     ])
