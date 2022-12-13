@@ -56,10 +56,12 @@ class NumpyReplayBuffer:
 
 class ReverbReplayBuffer:
 
-    def __init__(self, obs_shape, buffer_size=100_000, batch_size=32, samples_per_insert=None, priority_exponent=0.6):
+    def __init__(self, agent_id, obs_shape, buffer_size=100_000, batch_size=32, samples_per_insert=None, priority_exponent=0.6):
+        self.agent_id = agent_id
+        
         self._server = reverb.Server(tables=[
             reverb.Table(
-                name='my_table',
+                name=f'{agent_id}_table',
                 sampler=reverb.selectors.Prioritized(priority_exponent),
                 remover=reverb.selectors.Fifo(),
                 max_size=int(buffer_size),
@@ -84,7 +86,7 @@ class ReverbReplayBuffer:
                 server_address = f"localhost:{self._server._port}",
                 batch_size = batch_size,
                 prefetch_size = 4,
-                table = "my_table",
+                table = f'{agent_id}_table',
                 num_parallel_calls = 12,
         )
         self._dataset = iter(self._dataset)
@@ -110,7 +112,7 @@ class ReverbReplayBuffer:
             })
 
             writer.create_item(
-                table='my_table',
+                table=f'{self.agent_id}_table',
                 priority=1.,
                 trajectory={
                     'obs': writer.history['obs'][0],

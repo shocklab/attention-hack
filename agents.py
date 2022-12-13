@@ -11,12 +11,14 @@ from model import QNetwork
 
 class Agent:
 
-    def __init__(self, obs_shape, num_actions, buffer_size=100_000, batch_size=32, eps_min=0.05,
+    def __init__(self, agent_id, obs_shape, num_actions, buffer_size=100_000, batch_size=32, eps_min=0.05,
         eps_dec_steps=1e4, train_period=4, lr=3e-4, gamma=0.99, target_update_rate=0.01, 
         importance_sampling_exponent=0.2, huber_loss_parameter=1., **kwargs):
 
+        self.agent_id = agent_id
+        
         # self.buffer = NumpyReplayBuffer(obs_shape, buffer_size=buffer_size, batch_size=batch_size)
-        self.buffer = ReverbReplayBuffer(obs_shape, buffer_size=buffer_size, batch_size=batch_size)
+        self.buffer = ReverbReplayBuffer(agent_id, obs_shape, buffer_size=buffer_size, batch_size=batch_size)
         self.Q_net = QNetwork(obs_shape=obs_shape, num_actions=num_actions)
         self.target_Q_net = copy.deepcopy(self.Q_net)
         self.optim = snt.optimizers.Adam(lr)
@@ -80,7 +82,7 @@ class Agent:
             updates = dict(zip(*reverb_priorities))
 
             client.mutate_priorities(
-                table="my_table",
+                table=f"{self.agent_id}_table",
                 updates=updates
             )
 
@@ -100,6 +102,7 @@ class Agent:
         target_qs = trfl.batched_index(target_q_values, next_actions)
 
         targets = rew + self.gamma * (1.0 - done) * target_qs
+        targets = tf.stop_gradient(targets)
 
         with tf.GradientTape() as tape:
             qs = self.Q_net(obs)

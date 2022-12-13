@@ -6,20 +6,30 @@ from gym import spaces
 
 class DoubleIndependentGym:
 
-    def __init__(self, env_name="CartPole-v1"):
+    def __init__(self, env_name="CartPole-v1", single_agent=False):
+
+        self.single_agent = single_agent
 
         self.env_0 = gym.make(env_name)
-        self.env_1 = gym.make(env_name)
 
-        self.agents = ["agent_0", "agent_1"]
+        if not self.single_agent:
+            self.env_1 = gym.make(env_name)
+
+        if not self.single_agent:
+            self.agents = ["agent_0", "agent_1"]
+        else:
+            self.agents = ["agent_0"]
+
         self.num_actions = 2
         self.obs_shape = self.env_0.observation_space.shape
 
     def reset(self):
         obs_0 = self.env_0.reset()
-        obs_1 = self.env_1.reset()
+        obs = {"agent_0": obs_0}
 
-        obs = {"agent_0": obs_0, "agent_1": obs_1}
+        if not self.single_agent:
+            obs_1 = self.env_1.reset()
+            obs.update({"agent_1": obs_1})
 
         return obs
 
@@ -29,11 +39,14 @@ class DoubleIndependentGym:
         done = {}
 
         next_obs["agent_0"], rew["agent_0"], done["agent_0"], info = self.env_0.step(actions["agent_0"])
-        next_obs["agent_1"], rew["agent_1"], done["agent_1"], info = self.env_1.step(actions["agent_1"])
 
-        if done["agent_0"] or done["agent_1"]:
-            done["agent_0"] = True
-            done["agent_1"] = True
+        if not self.single_agent:
+            next_obs["agent_1"], rew["agent_1"], done["agent_1"], info = self.env_1.step(actions["agent_1"])
+
+        if not self.single_agent:
+            if done["agent_0"] or done["agent_1"]:
+                done["agent_0"] = True
+                done["agent_1"] = True
 
         return next_obs, rew, done
 

@@ -13,11 +13,11 @@ tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 config = {
     "max_episodes": 1_000_000,
-    "train_period": 4,
+    "train_period": 8,
     "batch_size": 64,
     "eps_min": 0.1,
-    "eps_dec_steps": 5e5,
-    "buffer_size": int(5e3),
+    "eps_dec_steps": 5e4,
+    "buffer_size": int(1e5),
     "lr": 3e-4,
     "eval_period": 100,
     "eval_episodes": 4
@@ -30,6 +30,7 @@ wandb.init(
 
 # Create env
 env = Environment(pixel_obs=False, survival_bonus=True, single_agent=True)
+# env = DoubleIndependentGym("CartPole-v1", single_agent=True)
 
 num_actions = env.num_actions
 obs_shape = env.obs_shape
@@ -38,6 +39,7 @@ obs_shape = env.obs_shape
 agents = {}
 for agent_id in env.agents:
     agents[agent_id] = Agent(
+        agent_id=agent_id,
         obs_shape=obs_shape, 
         num_actions=num_actions, 
         **config
